@@ -15,6 +15,8 @@ type Pool struct {
 	min            int
 	max            int
 	available_chan chan *Resouce
+	not_dirty      int
+	stop           bool
 }
 
 func NewPool(rh ResourceHandle, min int, max int) *Pool {
@@ -44,12 +46,13 @@ func (this *Pool) createResouce() {
 			return err
 		}
 		r := &Resouce{
-			R:         p,
-			R_Dirty:   nil,
-			expire_in: time.Now().Unix() + 60,
+			R:       p,
+			R_Dirty: nil,
 		}
 		r.touch()
-		this.available_chan <- r
+		go func() {
+			this.available_chan <- r
+		}()
 		this.resources[r] = true
 		return nil
 	}
@@ -69,8 +72,8 @@ func (this *Pool) createResouce() {
 }
 
 func (this *Pool) maintain() {
-	alive_resouce := 0
-	f := func() { //close "dirty&&expired" resouce
+	f := func() { //close "dirty&&expired" Resouce
+		alive_resouce := 0
 		for k, _ := range this.resources {
 			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)
@@ -80,25 +83,29 @@ func (this *Pool) maintain() {
 			if !k.dirty {
 				alive_resouce++
 			}
-
 		}
+		this.not_dirty = alive_resouce
 		if needs := this.min - alive_resouce; needs > 0 {
 			for i := 0; i < needs; i++ {
 				this.createResouce()
 			}
 		}
-
 	}
 	for {
-		time.Sleep(time.Second)
 		f()
+		time.Sleep(time.Second)
+
 	}
 }
 
 func (this *Pool) Get() *Resouce {
+	if this.not_dirty < this.min {
+		go this.createResouce()
+	}
 	var r *Resouce
 	for r = range this.available_chan {
 		if r != nil && r.valid() {
+			r.touch()
 			break
 		}
 	}
@@ -109,7 +116,9 @@ func (this *Pool) Put(r *Resouce) {
 	if r.R_Dirty != nil {
 		r.dirty = true
 	} else {
-		this.available_chan <- r
+		go func() {
+			this.available_chan <- r
+		}()
 	}
 }
 func (this *Pool) closeResouce(r *Resouce) {

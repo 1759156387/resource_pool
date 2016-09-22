@@ -14,7 +14,7 @@ type Resouce struct {
 }
 
 func (this *Resouce) touch() { //unix-style modify expire_in
-	this.expire_in = current_time + 60
+	this.expire_in = current_time + 3
 }
 
 func (this *Resouce) tryLock() bool { // lock resource
