@@ -55,7 +55,7 @@ func (this *Resouce) expired() bool {
 	this.lock.Unlock()
 	return b
 }
-func (this *Resouce) canFree() bool { //test this resourc can be free
+func (this *Resouce) canFree() bool { //test this resourc can be free and lock resource
 	if this.dirty || this.expired() {
 		return this.tryLock()
 	}

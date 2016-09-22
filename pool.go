@@ -1,6 +1,7 @@
 package resource_pool
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -11,12 +12,9 @@ type ResourceHandle interface {
 type Pool struct {
 	rh             ResourceHandle
 	resources      map[*Resouce]bool
-	created        int
 	min            int
 	max            int
-	expire_in      time.Duration //expire in second
 	available_chan chan *Resouce
-	resourcemap    map[*Resouce]bool
 }
 
 func NewPool(rh ResourceHandle, min int, max int) *Pool {
@@ -27,17 +25,18 @@ func NewPool(rh ResourceHandle, min int, max int) *Pool {
 		rh:             rh,
 		min:            min,
 		max:            max,
-		available_chan: make(chan *Resouce, max),
-		expire_in:      60,
+		available_chan: make(chan *Resouce, max*2),
 		resources:      make(map[*Resouce]bool),
-		created:        0,
+	}
+	for i := 0; i < min; i++ {
+		p.createResouce()
 	}
 	go p.maintain()
-
 	return p
 }
 
 func (this *Pool) createResouce() {
+	fmt.Println("create resouce")
 	err_times := 0
 	f := func() error {
 		p, err := this.rh.CreateResouce()
@@ -45,13 +44,13 @@ func (this *Pool) createResouce() {
 			return err
 		}
 		r := &Resouce{
-			R:       p,
-			R_Dirty: nil,
+			R:         p,
+			R_Dirty:   nil,
+			expire_in: time.Now().Unix() + 60,
 		}
 		r.touch()
 		this.available_chan <- r
 		this.resources[r] = true
-		this.created++
 		return nil
 	}
 	for {
@@ -70,10 +69,22 @@ func (this *Pool) createResouce() {
 }
 
 func (this *Pool) maintain() {
+	alive_resouce := 0
 	f := func() { //close "dirty&&expired" resouce
 		for k, _ := range this.resources {
-			if k.canFree() {
+			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)
+				k.unlock()
+				delete(this.resources, k)
+			}
+			if !k.dirty {
+				alive_resouce++
+			}
+
+		}
+		if needs := this.min - alive_resouce; needs > 0 {
+			for i := 0; i < needs; i++ {
+				this.createResouce()
 			}
 		}
 
@@ -102,5 +113,6 @@ func (this *Pool) Put(r *Resouce) {
 	}
 }
 func (this *Pool) closeResouce(r *Resouce) {
-
+	fmt.Println("close resouce")
+	this.rh.CloseResource(r)
 }
