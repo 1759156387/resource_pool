@@ -37,7 +37,7 @@ func usePool() {
 	fmt.Println("use pool")
 	start_time := time.Now()
 	pt := new(PoolTest)
-	p := NewPool(pt, 10, 50, 3)
+	p := NewPool(pt, 10, 50, 30)
 	//	defer p.Close()
 	f := func(numofgoroutinues int, n int) {
 		wg.Add(1)
