@@ -1,7 +1,7 @@
 package resource_pool
 
 import (
-	"fmt"
+	//	"fmt"
 	"sync"
 	"time"
 )
@@ -20,9 +20,10 @@ type Pool struct {
 	stop            bool
 	lock            sync.Mutex
 	univerisal_time int64
+	timeout         int64
 }
 
-func NewPool(rh ResourceHandle, min int, max int, expire_in int) *Pool {
+func NewPool(rh ResourceHandle, min int, max int, timeout int64) *Pool {
 	if rh == nil {
 		panic("nil create resource function")
 	}
@@ -33,6 +34,7 @@ func NewPool(rh ResourceHandle, min int, max int, expire_in int) *Pool {
 		available_chan:  make(chan *Resouce, max*2),
 		resources:       make(map[*Resouce]bool),
 		univerisal_time: 0,
+		timeout:         timeout,
 	}
 	for i := 0; i < min; i++ {
 		p.createResouce()
@@ -53,6 +55,7 @@ func (this *Pool) createResouce() error {
 		R:               p,
 		R_Dirty:         nil,
 		univerisal_time: &this.univerisal_time,
+		timeout:         &this.timeout,
 	}
 	r.touch()
 	if len(this.available_chan) < this.max {
@@ -73,7 +76,7 @@ func (this *Pool) createResouce() error {
 func (this *Pool) tick() {
 	f := func() { //close "dirty&&expired" Resouce
 		alive_resouce := 0
-		//		fmt.Println("resouce len:", len(this.resources))
+		//		fmt.Println("resource_len:", len(this.resources))
 		for k, _ := range this.resources {
 			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)

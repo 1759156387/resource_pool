@@ -43,7 +43,7 @@ func usePool() {
 	start_time := time.Now()
 	pt := new(PoolTest)
 	p := NewPool(pt, 2, 50, 3)
-	defer p.Close()
+	//	defer p.Close()
 	f := func(numofgoroutinues int, n int) {
 		wg.Add(1)
 		defer wg.Done()

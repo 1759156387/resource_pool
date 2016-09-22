@@ -12,10 +12,11 @@ type Resouce struct {
 	use             uint32
 	lock            sync.Mutex
 	univerisal_time *int64
+	timeout         *int64
 }
 
 func (this *Resouce) touch() { //unix-style modify expire_in
-	this.expire_in = *this.univerisal_time + 3
+	this.expire_in = *this.univerisal_time + *this.timeout
 }
 
 func (this *Resouce) tryLock() bool { // lock resource
