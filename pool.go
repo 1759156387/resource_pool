@@ -1,7 +1,7 @@
 package resource_pool
 
 import (
-	//	"fmt"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -16,13 +16,13 @@ type Pool struct {
 	min             int
 	max             int
 	available_chan  chan *Resouce
-	not_dirty       int
+	created         int
 	stop            bool
 	lock            sync.Mutex
 	univerisal_time int64
 }
 
-func NewPool(rh ResourceHandle, min int, max int) *Pool {
+func NewPool(rh ResourceHandle, min int, max int, expire_in int) *Pool {
 	if rh == nil {
 		panic("nil create resource function")
 	}
@@ -42,7 +42,9 @@ func NewPool(rh ResourceHandle, min int, max int) *Pool {
 }
 
 func (this *Pool) createResouce() error {
-	//fmt.Println("create resouce")
+	if this.created >= this.max {
+		return nil
+	}
 	p, err := this.rh.CreateResouce()
 	if err != nil {
 		return err
@@ -63,6 +65,7 @@ func (this *Pool) createResouce() error {
 	this.lock.Lock()
 	this.resources[r] = true
 	this.lock.Unlock()
+	this.created++
 	return nil
 
 }
@@ -70,6 +73,7 @@ func (this *Pool) createResouce() error {
 func (this *Pool) tick() {
 	f := func() { //close "dirty&&expired" Resouce
 		alive_resouce := 0
+		//		fmt.Println("resouce len:", len(this.resources))
 		for k, _ := range this.resources {
 			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)
@@ -82,7 +86,6 @@ func (this *Pool) tick() {
 				alive_resouce++
 			}
 		}
-		this.not_dirty = alive_resouce
 		if needs := this.min - alive_resouce; needs > 0 {
 			for i := 0; i < needs; i++ {
 				this.createResouce()
@@ -90,6 +93,9 @@ func (this *Pool) tick() {
 		}
 	}
 	for {
+		if this.stop {
+			break
+		}
 		f()
 		this.univerisal_time++
 		time.Sleep(time.Second)
@@ -97,7 +103,10 @@ func (this *Pool) tick() {
 }
 
 func (this *Pool) Get() *Resouce {
-	if this.not_dirty < this.min {
+	if this.stop {
+		return nil
+	}
+	if len(this.available_chan) < this.min {
 		go this.createResouce()
 	}
 	var r *Resouce
@@ -110,6 +119,9 @@ func (this *Pool) Get() *Resouce {
 	return r
 }
 func (this *Pool) Put(r *Resouce) {
+	if this.stop {
+		return
+	}
 	r.unlock()
 	if r.R_Dirty != nil {
 		r.dirty = true
@@ -124,6 +136,13 @@ func (this *Pool) Put(r *Resouce) {
 	}()
 }
 func (this *Pool) closeResouce(r *Resouce) {
-	//fmt.Println("close resouce")
+	this.created--
 	this.rh.CloseResource(r)
+}
+
+func (this *Pool) Close() {
+	this.stop = true
+	for k, _ := range this.resources {
+		this.closeResouce(k)
+	}
 }
