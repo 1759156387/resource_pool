@@ -1,7 +1,8 @@
 package resource_pool
 
 import (
-	"fmt"
+	//	"fmt"
+	"sync"
 	"time"
 )
 
@@ -10,13 +11,15 @@ type ResourceHandle interface {
 	CloseResource(*Resouce)
 }
 type Pool struct {
-	rh             ResourceHandle
-	resources      map[*Resouce]bool
-	min            int
-	max            int
-	available_chan chan *Resouce
-	not_dirty      int
-	stop           bool
+	rh              ResourceHandle
+	resources       map[*Resouce]bool
+	min             int
+	max             int
+	available_chan  chan *Resouce
+	not_dirty       int
+	stop            bool
+	lock            sync.Mutex
+	univerisal_time int64
 }
 
 func NewPool(rh ResourceHandle, min int, max int) *Pool {
@@ -24,61 +27,56 @@ func NewPool(rh ResourceHandle, min int, max int) *Pool {
 		panic("nil create resource function")
 	}
 	p := &Pool{
-		rh:             rh,
-		min:            min,
-		max:            max,
-		available_chan: make(chan *Resouce, max*2),
-		resources:      make(map[*Resouce]bool),
+		rh:              rh,
+		min:             min,
+		max:             max,
+		available_chan:  make(chan *Resouce, max*2),
+		resources:       make(map[*Resouce]bool),
+		univerisal_time: 0,
 	}
 	for i := 0; i < min; i++ {
 		p.createResouce()
 	}
-	go p.maintain()
+	go p.tick()
 	return p
 }
 
-func (this *Pool) createResouce() {
-	fmt.Println("create resouce")
-	err_times := 0
-	f := func() error {
-		p, err := this.rh.CreateResouce()
-		if err != nil {
-			return err
-		}
-		r := &Resouce{
-			R:       p,
-			R_Dirty: nil,
-		}
-		r.touch()
+func (this *Pool) createResouce() error {
+	//fmt.Println("create resouce")
+	p, err := this.rh.CreateResouce()
+	if err != nil {
+		return err
+	}
+	r := &Resouce{
+		R:               p,
+		R_Dirty:         nil,
+		univerisal_time: &this.univerisal_time,
+	}
+	r.touch()
+	if len(this.available_chan) < this.max {
+		this.available_chan <- r
+	} else {
 		go func() {
 			this.available_chan <- r
 		}()
-		this.resources[r] = true
-		return nil
 	}
-	for {
-		e := f()
-		if e != nil {
-			err_times++
-		} else {
-			return
-		}
-		if err_times == 5 {
-			panic("create resource returned 5 times error")
-		}
-		time.Sleep(time.Second)
-	}
+	this.lock.Lock()
+	this.resources[r] = true
+	this.lock.Unlock()
+	return nil
 
 }
 
-func (this *Pool) maintain() {
+func (this *Pool) tick() {
 	f := func() { //close "dirty&&expired" Resouce
 		alive_resouce := 0
 		for k, _ := range this.resources {
 			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)
 				k.unlock()
+				this.lock.Lock()
 				delete(this.resources, k)
+				this.lock.Unlock()
 			}
 			if !k.dirty {
 				alive_resouce++
@@ -93,8 +91,8 @@ func (this *Pool) maintain() {
 	}
 	for {
 		f()
+		this.univerisal_time++
 		time.Sleep(time.Second)
-
 	}
 }
 
@@ -115,13 +113,17 @@ func (this *Pool) Put(r *Resouce) {
 	r.unlock()
 	if r.R_Dirty != nil {
 		r.dirty = true
-	} else {
-		go func() {
-			this.available_chan <- r
-		}()
+		return
 	}
+	if len(this.available_chan) < this.max {
+		this.available_chan <- r
+		return
+	}
+	go func() {
+		this.available_chan <- r
+	}()
 }
 func (this *Pool) closeResouce(r *Resouce) {
-	fmt.Println("close resouce")
+	//fmt.Println("close resouce")
 	this.rh.CloseResource(r)
 }

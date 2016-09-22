@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	data       = 500
-	goroutines = 10
+	data       = 50000
+	goroutines = 100
 	wg         sync.WaitGroup
 )
 
@@ -28,14 +28,16 @@ func (this *PoolTest) CloseResource(r *Resouce) {
 }
 
 func Test_pool(t *testing.T) {
-	start_time := time.Now()
-	defer func() {
-		wg.Wait()
-		fmt.Println("used time:", time.Now().Sub(start_time))
-	}()
-	pt := new(PoolTest)
-	p := NewPool(pt, 5, 100)
+	usePool()
+	oneConnection()
+	getConnEveryTime()
+}
 
+func usePool() {
+	fmt.Println("use pool")
+	start_time := time.Now()
+	pt := new(PoolTest)
+	p := NewPool(pt, goroutines, goroutines*2)
 	f := func(numofgoroutinues int, n int) {
 		wg.Add(1)
 		defer wg.Done()
@@ -52,24 +54,20 @@ func Test_pool(t *testing.T) {
 		} else {
 			go f(i, data/goroutines)
 		}
-
 	}
-
+	wg.Wait()
+	fmt.Println("used time:", time.Now().Sub(start_time))
 }
 
-func Test_getconn(t *testing.T) {
-	panic(123)
+func oneConnection() {
+	fmt.Println("oneConnection")
 	start_time := time.Now()
-	defer func() {
-		wg.Wait()
-		fmt.Println("used time:", time.Now().Sub(start_time))
-	}()
-
+	dbconn, _ := sql.Open("mysql", "root:123@tcp(localhost:3306)/test?charset=utf8")
+	defer dbconn.Close()
 	f := func(numofgoroutinues int, n int) {
 		wg.Add(1)
 		defer wg.Done()
 		for i := 0; i < n; i++ {
-			dbconn, _ := sql.Open("mysql", "root:123@tcp(localhost:3306)/test?charset=utf8")
 			dbconn.Exec("insert into user values(?,?)", fmt.Sprintf("user_%d_%d", numofgoroutinues, n), n%100)
 		}
 	}
@@ -79,7 +77,30 @@ func Test_getconn(t *testing.T) {
 		} else {
 			go f(i, data/goroutines)
 		}
-
 	}
+	wg.Wait()
+	fmt.Println("used time:", time.Now().Sub(start_time))
+}
 
+func getConnEveryTime() {
+	fmt.Println("getConnEveryTime")
+	start_time := time.Now()
+	f := func(numofgoroutinues int, n int) {
+		wg.Add(1)
+		defer wg.Done()
+		for i := 0; i < n; i++ {
+			dbconn, _ := sql.Open("mysql", "root:123@tcp(localhost:3306)/test?charset=utf8")
+			dbconn.Exec("insert into user values(?,?)", fmt.Sprintf("user_%d_%d", numofgoroutinues, n), n%100)
+			dbconn.Close()
+		}
+	}
+	for i := 0; i < goroutines; i++ {
+		if i == goroutines-1 {
+			f(i, data/goroutines)
+		} else {
+			go f(i, data/goroutines)
+		}
+	}
+	wg.Wait()
+	fmt.Println("used time:", time.Now().Sub(start_time))
 }

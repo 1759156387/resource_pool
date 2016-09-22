@@ -5,16 +5,17 @@ import (
 )
 
 type Resouce struct {
-	R         interface{}
-	R_Dirty   error //使用资源出现了错误
-	dirty     bool
-	expire_in int64
-	use       uint32
-	lock      sync.Mutex
+	R               interface{}
+	R_Dirty         error //使用资源出现了错误
+	dirty           bool
+	expire_in       int64
+	use             uint32
+	lock            sync.Mutex
+	univerisal_time *int64
 }
 
 func (this *Resouce) touch() { //unix-style modify expire_in
-	this.expire_in = current_time + 3
+	this.expire_in = *this.univerisal_time + 3
 }
 
 func (this *Resouce) tryLock() bool { // lock resource
@@ -48,7 +49,7 @@ func (this *Resouce) valid() bool { //if resource valid
 
 func (this *Resouce) expired() bool {
 	this.lock.Lock()
-	b := this.expire_in < current_time //
+	b := this.expire_in < *this.univerisal_time //
 	if b {
 		this.dirty = true
 	}
