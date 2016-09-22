@@ -1,7 +1,6 @@
 package resource_pool
 
 import (
-	//	"fmt"
 	"sync"
 	"time"
 )
@@ -58,13 +57,9 @@ func (this *Pool) createResouce() error {
 		timeout:         &this.timeout,
 	}
 	r.touch()
-	if len(this.available_chan) < this.max {
-		this.available_chan <- r
-	} else {
-		go func() {
-			this.available_chan <- r
-		}()
-	}
+
+	this.available_chan <- r
+
 	this.lock.Lock()
 	this.resources[r] = true
 	this.lock.Unlock()
@@ -95,14 +90,23 @@ func (this *Pool) tick() {
 			}
 		}
 	}
-	for {
-		if this.stop {
-			break
+	go func() {
+		for {
+			if this.stop {
+				break
+			}
+			f()
+			this.univerisal_time++
+			time.Sleep(time.Second)
 		}
-		f()
-		this.univerisal_time++
-		time.Sleep(time.Second)
-	}
+	}()
+	go func() {
+		for r := range this.available_chan {
+			if r != nil && (!r.dirty) {
+				this.available_chan <- r
+			}
+		}
+	}()
 }
 
 func (this *Pool) Get() *Resouce {
@@ -135,9 +139,9 @@ func (this *Pool) Put(r *Resouce) {
 		this.available_chan <- r
 		return
 	}
-	go func() {
-		this.available_chan <- r
-	}()
+	//	go func() {
+	this.available_chan <- r
+	//	}()
 }
 func (this *Pool) closeResouce(r *Resouce) {
 	this.created--
@@ -146,6 +150,7 @@ func (this *Pool) closeResouce(r *Resouce) {
 
 func (this *Pool) Close() {
 	this.stop = true
+	close(this.available_chan)
 	for k, _ := range this.resources {
 		this.closeResouce(k)
 	}
