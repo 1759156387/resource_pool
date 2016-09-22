@@ -12,7 +12,7 @@ import (
 
 var (
 	data       = 50000
-	goroutines = 200
+	goroutines = 100
 	wg         sync.WaitGroup
 )
 
@@ -28,11 +28,6 @@ func (this *PoolTest) CloseResource(r *Resouce) {
 }
 
 func Test_pool(t *testing.T) {
-	//	c := make(chan int, 100)
-	//	c <- 1
-	//	c <- 1
-	//	c <- 1
-	//	fmt.Println(len(c))
 	usePool()
 	oneConnection()
 	getConnEveryTime()
@@ -42,7 +37,7 @@ func usePool() {
 	fmt.Println("use pool")
 	start_time := time.Now()
 	pt := new(PoolTest)
-	p := NewPool(pt, 2, 50, 3)
+	p := NewPool(pt, 10, 50, 3)
 	//	defer p.Close()
 	f := func(numofgoroutinues int, n int) {
 		wg.Add(1)

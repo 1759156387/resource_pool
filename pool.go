@@ -1,7 +1,7 @@
 package resource_pool
 
 import (
-	"fmt"
+	//	"fmt"
 	"sync"
 	"time"
 )
@@ -76,7 +76,7 @@ func (this *Pool) createResouce() error {
 func (this *Pool) tick() {
 	f := func() { //close "dirty&&expired" Resouce
 		alive_resouce := 0
-		fmt.Println("resource_len:", len(this.resources))
+		//		fmt.Println("resource_len:", len(this.resources))
 		for k, _ := range this.resources {
 			if k.canFree() { //canfree need to lock resource,so need to unlock resource
 				this.closeResouce(k)
