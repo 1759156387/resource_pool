@@ -1,8 +1,6 @@
 package resource_pool
 
 import (
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -12,9 +10,8 @@ type ResourceHandle interface {
 }
 type Pool struct {
 	rh             ResourceHandle
-	resources      *Resouce
+	resources      map[*Resouce]bool
 	created        int
-	lock           sync.Mutex
 	min            int
 	max            int
 	expire_in      time.Duration //expire in second
@@ -32,7 +29,7 @@ func NewPool(rh ResourceHandle, min int, max int) *Pool {
 		max:            max,
 		available_chan: make(chan *Resouce, max),
 		expire_in:      60,
-		resources:      &Resouce{},
+		resources:      make(map[*Resouce]bool),
 		created:        0,
 	}
 	go p.maintain()
@@ -40,25 +37,45 @@ func NewPool(rh ResourceHandle, min int, max int) *Pool {
 	return p
 }
 
-func (this *Pool) createResouce() error {
-	p, err := this.rh.CreateResouce()
-	if err != nil {
-		return err
+func (this *Pool) createResouce() {
+	err_times := 0
+	f := func() error {
+		p, err := this.rh.CreateResouce()
+		if err != nil {
+			return err
+		}
+		r := &Resouce{
+			R:       p,
+			R_Dirty: nil,
+		}
+		r.touch()
+		this.available_chan <- r
+		this.resources[r] = true
+		this.created++
+		return nil
 	}
-	r := &Resouce{
-		R:     p,
-		Dirty: nil,
+	for {
+		e := f()
+		if e != nil {
+			err_times++
+		} else {
+			return
+		}
+		if err_times == 5 {
+			panic("create resource returned 5 times error")
+		}
+		time.Sleep(time.Second)
 	}
-	this.lock.Lock()
 
-	this.resources_len++
-	this.lock.Unlock()
-	return nil
 }
 
 func (this *Pool) maintain() {
-	//	index := this.min + 2*(this.max-this.min)/3
-	f := func() {
+	f := func() { //close "dirty&&expired" resouce
+		for k, _ := range this.resources {
+			if k.canFree() {
+				this.closeResouce(k)
+			}
+		}
 
 	}
 	for {
@@ -68,26 +85,22 @@ func (this *Pool) maintain() {
 }
 
 func (this *Pool) Get() *Resouce {
-	if this.created < this.max { //策略是创建更多的资源
-		go this.createResouce()
-	}
 	var r *Resouce
 	for r = range this.available_chan {
-		r.touch()
+		if r != nil && r.valid() {
+			break
+		}
 	}
 	return r
 }
-func (this *Pool) Free(r *Resouce) {
-	atomic.StoreUint32(&r.Use, 0)
-	this.available_chan <- r
+func (this *Pool) Put(r *Resouce) {
+	r.unlock()
+	if r.R_Dirty != nil {
+		r.dirty = true
+	} else {
+		this.available_chan <- r
+	}
 }
-func (this *Pool) release() {
-	f := func(r *Resouce) {
+func (this *Pool) closeResouce(r *Resouce) {
 
-	}
-
-	p = this.resources
-	for p != nil {
-
-	}
 }
