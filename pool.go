@@ -1,7 +1,6 @@
 package resource_pool
 
 import (
-	//	"fmt"
 	"sync"
 	"time"
 )
@@ -150,6 +149,7 @@ func (this *Pool) closeResouce(r *Resouce) {
 
 func (this *Pool) Close() {
 	this.stop = true
+	close(this.available_chan)
 	for k, _ := range this.resources {
 		this.closeResouce(k)
 	}
